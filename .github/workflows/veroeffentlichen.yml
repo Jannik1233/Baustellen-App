@@ -1,0 +1,48 @@
+# Baut die App bei jedem Hochladen zu GitHub und stellt sie auf Cloudflare Pages.
+# Branch "main" = die echte App (https://frohes-schaffen.pages.dev).
+# Jeder andere Branch = eigene Vorschau-Adresse, die echte App bleibt unberührt.
+# Benötigt in GitHub unter Settings > Secrets and variables > Actions:
+#   CLOUDFLARE_API_TOKEN  (Cloudflare-Schlüssel mit Recht "Cloudflare Pages: Edit")
+#   CLOUDFLARE_ACCOUNT_ID (Kontonummer bei Cloudflare)
+name: Veröffentlichen
+
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+
+concurrency:
+  group: veroeffentlichen-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  veroeffentlichen:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+      - name: Zu Cloudflare Pages hochladen
+        id: hochladen
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name frohes-schaffen --branch ${{ github.ref_name }} --commit-hash ${{ github.sha }}
+
+      - name: Adresse anzeigen
+        run: |
+          echo "### Fertig" >> "$GITHUB_STEP_SUMMARY"
+          echo "Adresse: ${{ steps.hochladen.outputs.deployment-url }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Branch-Adresse: ${{ steps.hochladen.outputs.pages-deployment-alias-url }}" >> "$GITHUB_STEP_SUMMARY"
